@@ -981,6 +981,39 @@ struct avar
     item_variations_t item_vars;
     if (!item_vars.create_from_item_varstore (var_store, c->plan->axes_old_index_tag_map))
       return false;
+
+    /* 3a. Cull unreachable regions before rebasing. The avar2 VarStore is
+     * evaluated in intermediate space (post-fvar, post-avar-v1, pre-avar-v2
+     * coordinates), so its reachable box is the retained intermediate range
+     * of every fvar axis: a restricted or pinned axis spans its old
+     * intermediate [minimum, maximum], a free public axis spans [-1, +1],
+     * and a hidden private axis sits at 0. A region whose tent is
+     * identically zero over that box is unreachable at runtime (a hidden
+     * axis pinned at 0, or a one-sided tent wholly outside a restricted or
+     * pinned axis's intermediate point/range) and can be dropped.
+     *
+     * The rebase below only touches axes present in old_intermediates, so
+     * without this pass regions dead on a hidden axis -- or any other region
+     * already zero over the retained box -- would be serialized verbatim.
+     * build_region_list () then removes the dropped regions from the rebuilt
+     * VarRegionList and as_item_varstore () renumbers the region indices and
+     * varIdxes. Invalid tents evaluate as constant 1 at runtime and are never
+     * culled (matching _hb_avar2_region_is_dead). */
+    hb_hashmap_t<hb_tag_t, Triple> intermediate_ranges;
+    for (const auto &axis : fvar_axes)
+    {
+      hb_tag_t axis_tag = axis.get_axis_tag ();
+      Triple range (-1.0, 0.0, 1.0);
+      Triple *old_int;
+      if (c->plan->old_intermediates.has (axis_tag, &old_int))
+	range = *old_int;
+      else if (axis.is_hidden ())
+	range = Triple (0.0, 0.0, 0.0);
+      if (unlikely (!intermediate_ranges.set (axis_tag, range)))
+	return false;
+    }
+    item_vars.cull_unreachable (intermediate_ranges);
+
     if (!item_vars.instantiate_tuple_vars (c->plan->old_intermediates,
                                            c->plan->axes_triple_distances,
                                            false))

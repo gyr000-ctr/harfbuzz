@@ -2084,6 +2084,21 @@ struct item_variations_t
     return !build_regions || build_region_list ();
   }
 
+  /* avar2 VarStore culling before instantiate_tuple_vars (): drop, per source
+   * VarData, the tuples whose region is unreachable over the retained
+   * intermediate-coordinate box. The avar2 VarStore is evaluated in
+   * INTERMEDIATE space (its inputs are the post-fvar, post-avar-v1,
+   * pre-avar-v2 coordinates), so its dead-region test uses intermediate-space
+   * ranges rather than the final-coordinate ranges that cull gvar/HVAR/GDEF.
+   * Must run before the tents are rebased. build_region_list () afterwards
+   * keeps only the regions surviving tuples reference, and
+   * as_item_varstore () renumbers the region indices and varIdxes. */
+  void cull_unreachable (const hb_hashmap_t<hb_tag_t, Triple> &intermediate_ranges)
+  {
+    for (tuple_variations_t& tuple_vars : vars)
+      tuple_vars.cull_unreachable (intermediate_ranges);
+  }
+
   /* Add a new VarData subtable. Returns outer index. */
   unsigned add_vardata (unsigned item_count)
   {

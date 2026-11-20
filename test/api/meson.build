@@ -149,6 +149,21 @@ foreach source : tests
     suite: suite)
 endforeach
 
+if not get_option('subset').disabled()
+  test('avar2-cull',
+    executable('test-subset-avar2-cull', 'test-subset-avar2-cull.c',
+      include_directories: [incconfig],
+      dependencies: [libharfbuzz_dep,
+                     libharfbuzz_cairo_dep,
+                     libharfbuzz_icu_dep,
+                     libharfbuzz_subset_dep],
+      install: false,
+    ),
+    protocol: 'tap',
+    env: env,
+    suite: ['api', 'subset'])
+endif
+
 if get_option('harfrust').enabled()
   harfrust_shape_env = environment()
   harfrust_shape_env.set('MALLOC_CHECK_', '1')

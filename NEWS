@@ -6,7 +6,8 @@ Overview of changes leading to REPLACEME
   is the default font backend.
 - The deprecated `hb_font_set_face()` now does nothing. To use another face,
   create a new font with `hb_font_create()`.
-
+- Cull unreachable regions from the avar version 2 VarStore when partial
+  instancing an avar2 font, shrinking the output without changing shaping.
 - New API:
   +hb_font_create_without_funcs_or_fail()
 - +hb_ot_layout_get_extender_glyphs()

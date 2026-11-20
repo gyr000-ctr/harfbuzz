@@ -362,6 +362,28 @@ runtime and never kill); ranges are padded by one F2Dot14 unit. Hidden axes
 are assumed to sit at their default, the same semantic assumption fontTools
 makes.
 
+#### avar2 VarStore culling (intermediate space)
+
+The reachable ranges above are in **final** space and cull the other
+variation tables (gvar/HVAR/GDEF/...), whose regions are evaluated at the
+post-avar2 final coordinates. The avar2 VarStore is different: it is
+evaluated in **intermediate** space (its inputs are the post-fvar,
+post-avar-v1, pre-avar-v2 coordinates), so its own regions need an
+intermediate-space dead test. Before the tents are rebased, `_subset_avar2`
+builds the retained intermediate box per fvar axis — a restricted or pinned
+axis spans its old intermediate `[minimum, maximum]` (`old_intermediates`),
+a free public axis spans `[-1, +1]`, and a hidden private axis sits at 0 —
+and drops every tuple whose region is identically zero over that box
+(`item_variations_t::cull_unreachable`). This is the only pass that can
+remove a region dead on a hidden axis, which the rebase never touches
+because hidden axes are absent from `old_intermediates`; it also removes
+one-sided tents wholly outside a restricted axis's intermediate range.
+`build_region_list ()` then keeps only the regions surviving tuples
+reference and `as_item_varstore ()` renumbers the region indices and
+varIdxes, so the output VarStore is rebuilt without the unreachable
+regions. As elsewhere, invalid tents evaluate as constant 1 at runtime and
+are never culled, and the pass changes no reachable coordinate.
+
 
 ## Verification
 
