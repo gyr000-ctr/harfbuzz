@@ -59,6 +59,7 @@ tests = [
   'colrv1_subset_varstore',
   'colr_with_components',
   'cbdt',
+  'ebdt',
   'variable',
   'avar2_region_endpoints',
   'avar2_region_endpoints_negative',

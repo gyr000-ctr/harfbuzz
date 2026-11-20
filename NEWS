@@ -6,6 +6,9 @@ Overview of changes leading to REPLACEME
   is the default font backend.
 - The deprecated `hb_font_set_face()` now does nothing. To use another face,
   create a new font with `hb_font_create()`.
+- The subsetter now subsets `EBDT`/`EBLC` embedded bitmap tables instead of
+  dropping them, rebuilding the bitmap location index and offsets for the
+  renumbered glyph ids and keeping image data 32-bit aligned.
 
 - New API:
   +hb_font_create_without_funcs_or_fail()

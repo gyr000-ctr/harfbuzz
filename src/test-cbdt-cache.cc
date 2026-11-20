@@ -62,7 +62,7 @@ subset_strike (const OT::BitmapSizeTable &strike,
   serializer.start_serialize<OT::BitmapSizeTable> ();
   hb_subset_context_t context (nullptr, plan, &serializer, HB_OT_TAG_CBLC);
   hb_always_assert (strike.subset (&context, cblc, cbdt.arrayZ, cbdt.length,
-				  data, dedup));
+				  data, dedup, false));
   serializer.end_serialize ();
   hb_always_assert (!serializer.in_error ());
   return serializer.copy_blob ();
@@ -83,7 +83,7 @@ test_required_allocations (const OT::BitmapSizeTable &strike,
   fail_after = failure;
   allocation_count = 0;
   bool success = strike.subset (&context, cblc, cbdt.arrayZ, cbdt.length,
-			       &data, nullptr);
+			       &data, nullptr, false);
   unsigned count = allocation_count;
   hb_always_assert (!fail_after);
   /* Required image/offset allocations must fail serialization instead of

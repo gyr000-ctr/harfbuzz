@@ -53,8 +53,6 @@ hb_subset_input_t::hb_subset_input_t ()
     // Copied from fontTools:
     HB_TAG ('J', 'S', 'T', 'F'),
     HB_TAG ('D', 'S', 'I', 'G'),
-    HB_TAG ('E', 'B', 'D', 'T'),
-    HB_TAG ('E', 'B', 'L', 'C'),
     HB_TAG ('E', 'B', 'S', 'C'),
     HB_TAG ('S', 'V', 'G', ' '),
     HB_TAG ('P', 'C', 'L', 'T'),

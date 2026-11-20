@@ -712,8 +712,6 @@ _create_old_gid_to_new_gid_map (const hb_face_t *face,
  * handling one. */
 static const hb_tag_t unsubsettable_glyph_tables[] = {
   /* OpenType */
-  HB_TAG ('E', 'B', 'D', 'T'),
-  HB_TAG ('E', 'B', 'L', 'C'),
   HB_TAG ('J', 'S', 'T', 'F'),
   HB_TAG ('L', 'T', 'S', 'H'),
   HB_TAG ('S', 'V', 'G', ' '),

@@ -52,8 +52,8 @@
  * containing only the data specified in the input.
  *
  * Currently most outline and bitmap tables are supported: glyf, CFF, CFF2, sbix,
- * COLR, and CBDT/CBLC. This also includes fonts with variable outlines via OpenType
- * variations. Notably EBDT/EBLC and SVG are not supported. Layout subsetting is supported
+ * COLR, CBDT/CBLC and EBDT/EBLC. This also includes fonts with variable outlines via
+ * OpenType variations. Notably SVG is not supported. Layout subsetting is supported
  * only for OpenType Layout tables (GSUB, GPOS, GDEF). Notably subsetting of graphite or AAT tables
  * is not yet supported.
  *

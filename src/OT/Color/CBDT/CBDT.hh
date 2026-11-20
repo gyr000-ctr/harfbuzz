@@ -42,6 +42,8 @@
  */
 #define HB_OT_TAG_CBLC HB_TAG('C','B','L','C')
 #define HB_OT_TAG_CBDT HB_TAG('C','B','D','T')
+#define HB_OT_TAG_EBLC HB_TAG('E','B','L','C')
+#define HB_OT_TAG_EBDT HB_TAG('E','B','D','T')
 
 
 namespace OT {
@@ -128,7 +130,20 @@ struct cblc_bitmap_size_subset_context_t
   hb_codepoint_t start_glyph;	/* OUT */
   hb_codepoint_t end_glyph;	/* OUT */
   cbdt_dedup_context_t *dedup;	/* Shared across strikes; may be null. */
+  bool align_image_data;	/* EBDT requires 32-bit aligned image data. */
 };
+
+static inline bool
+_align_cbdt (hb_vector_t<char> *cbdt_prime)
+{
+  unsigned int old_len = cbdt_prime->length;
+  unsigned int new_len = (old_len + 3u) & ~3u;
+  if (new_len == old_len) return true;
+  if (unlikely (!cbdt_prime->resize_dirty ((int) new_len)))
+    return false;
+  hb_memset (cbdt_prime->arrayZ + old_len, 0, new_len - old_len);
+  return true;
+}
 
 static inline bool
 _copy_data_to_cbdt (hb_vector_t<char> *cbdt_prime,
@@ -536,6 +551,12 @@ struct IndexSubtableRecord
     }
     if (!shared)
     {
+      /* The EBDT spec requires each subtable's image data to start on a
+       * 32-bit boundary. CBDT has no alignment requirement, so leave its
+       * output byte-identical in layout to the previous behavior. */
+      if (bitmap_size_context->align_image_data && data.length &&
+	  unlikely (!_align_cbdt (bitmap_size_context->cbdt_prime)))
+	return_trace (false);
       image_data_offset = bitmap_size_context->cbdt_prime->length;
       if (unlikely (!c->serializer->check_success (
 			_copy_data_to_cbdt (bitmap_size_context->cbdt_prime,
@@ -644,7 +665,7 @@ struct IndexSubtableRecord
 
 struct IndexSubtableArray
 {
-  friend struct CBDT;
+  template <bool> friend struct CBDTImpl;
 
   bool sanitize (hb_sanitize_context_t *c, unsigned int count) const
   {
@@ -765,8 +786,8 @@ struct IndexSubtableArray
 
 struct BitmapSizeTable
 {
-  friend struct CBLC;
-  friend struct CBDT;
+  template <bool> friend struct CBLCImpl;
+  template <bool> friend struct CBDTImpl;
 
   bool sanitize (hb_sanitize_context_t *c, const void *base) const
   {
@@ -789,7 +810,8 @@ struct BitmapSizeTable
   subset (hb_subset_context_t *c, const void *base,
 	  const char *cbdt, unsigned int cbdt_length,
 	  hb_vector_t<char> *cbdt_prime /* INOUT */,
-	  cbdt_dedup_context_t *dedup /* INOUT */) const
+	  cbdt_dedup_context_t *dedup /* INOUT */,
+	  bool align_image_data) const
   {
     TRACE_SUBSET (this);
     auto *out_table = c->serializer->embed (this);
@@ -804,6 +826,7 @@ struct BitmapSizeTable
     bitmap_size_context.start_glyph = 1;
     bitmap_size_context.end_glyph = 0;
     bitmap_size_context.dedup = dedup;
+    bitmap_size_context.align_image_data = align_image_data;
 
     if (!out_table->indexSubtableArrayOffset.serialize_subset (c,
 							       indexSubtableArrayOffset,
@@ -868,18 +891,29 @@ struct GlyphBitmapDataFormat19
   DEFINE_SIZE_ARRAY (4, data);
 };
 
-struct CBLC
+/*
+ * CBLC (Color Bitmap Location) and EBLC (Embedded Bitmap Location) share
+ * the same on-disk layout. They differ only in their tag, the table version
+ * numbers they accept, and whether the paired data table requires 32-bit
+ * aligned image data (EBDT does, CBDT does not).
+ */
+template <bool is_eblc>
+struct CBLCImpl
 {
-  friend struct CBDT;
+  template <bool> friend struct CBDTImpl;
 
-  static constexpr hb_tag_t tableTag = HB_OT_TAG_CBLC;
+  static constexpr hb_tag_t tableTag = is_eblc ? HB_OT_TAG_EBLC
+					       : HB_OT_TAG_CBLC;
+  static constexpr hb_tag_t dataTableTag = is_eblc ? HB_OT_TAG_EBDT
+						   : HB_OT_TAG_CBDT;
 
   bool sanitize (hb_sanitize_context_t *c) const
   {
     TRACE_SANITIZE (this);
     return_trace (c->check_struct (this) &&
 		  hb_barrier () &&
-		  likely (version.major == 2 || version.major == 3) &&
+		  likely (is_eblc ? (version.major == 1 || version.major == 2)
+				  : (version.major == 2 || version.major == 3)) &&
 		  hb_barrier () &&
 		  sizeTables.sanitize (c, this));
   }
@@ -893,7 +927,7 @@ struct CBLC
 						 cbdt_prime->arrayZ,
 						 hb_free);
     cbdt_prime->init ();  // Leak arrayZ to the blob.
-    bool ret = c->plan->add_table (HB_OT_TAG_CBDT, cbdt_prime_blob);
+    bool ret = c->plan->add_table (dataTableTag, cbdt_prime_blob);
     hb_blob_destroy (cbdt_prime_blob);
     return ret;
   }
@@ -901,7 +935,7 @@ struct CBLC
   bool
   subset_size_table (hb_subset_context_t *c, const BitmapSizeTable& table,
 		     const char *cbdt /* IN */, unsigned int cbdt_length,
-		     CBLC *cblc_prime /* INOUT */, hb_vector_t<char> *cbdt_prime /* INOUT */,
+		     CBLCImpl *cblc_prime /* INOUT */, hb_vector_t<char> *cbdt_prime /* INOUT */,
 		     cbdt_dedup_context_t *dedup /* INOUT */) const
   {
     TRACE_SUBSET (this);
@@ -910,7 +944,8 @@ struct CBLC
     auto snap = c->serializer->snapshot ();
     auto cbdt_prime_len = cbdt_prime->length;
 
-    if (!table.subset (c, this, cbdt, cbdt_length, cbdt_prime, dedup))
+    if (!table.subset (c, this, cbdt, cbdt_length, cbdt_prime, dedup,
+		       is_eblc))
     {
       cblc_prime->sizeTables.len--;
       c->serializer->revert (snap);
@@ -920,8 +955,7 @@ struct CBLC
     return_trace (true);
   }
 
-  // Implemented in cc file as it depends on definition of CBDT.
-  HB_INTERNAL bool subset (hb_subset_context_t *c) const;
+  bool subset (hb_subset_context_t *c) const;
 
   protected:
   const BitmapSizeTable &choose_strike (hb_font_t *font) const
@@ -960,16 +994,26 @@ struct CBLC
   DEFINE_SIZE_ARRAY (8, sizeTables);
 };
 
-struct CBDT
+struct CBLC : CBLCImpl<false> {};
+struct EBLC : CBLCImpl<true> {};
+
+/*
+ * CBDT (Color Bitmap Data) and EBDT (Embedded Bitmap Data) share the same
+ * header layout; the image blocks referenced by the paired location table
+ * are treated as opaque bytes by the subsetter.
+ */
+template <bool is_ebdt>
+struct CBDTImpl
 {
-  static constexpr hb_tag_t tableTag = HB_OT_TAG_CBDT;
+  static constexpr hb_tag_t tableTag = is_ebdt ? HB_OT_TAG_EBDT
+					       : HB_OT_TAG_CBDT;
 
   struct accelerator_t
   {
     accelerator_t (hb_face_t *face)
     {
       this->cblc = hb_sanitize_context_t ().reference_table<CBLC> (face);
-      this->cbdt = hb_sanitize_context_t ().reference_table<CBDT> (face);
+      this->cbdt = hb_sanitize_context_t ().reference_table<CBDTImpl> (face);
 
       upem = hb_face_get_upem (face);
     }
@@ -1116,7 +1160,7 @@ struct CBDT
 
     private:
     hb_blob_ptr_t<CBLC> cblc;
-    hb_blob_ptr_t<CBDT> cbdt;
+    hb_blob_ptr_t<CBDTImpl> cbdt;
 
     unsigned int upem;
   };
@@ -1126,7 +1170,8 @@ struct CBDT
     TRACE_SANITIZE (this);
     return_trace (c->check_struct (this) &&
 		  hb_barrier () &&
-		  likely (version.major == 2 || version.major == 3));
+		  likely (is_ebdt ? (version.major == 1 || version.major == 2)
+				  : (version.major == 2 || version.major == 3)));
   }
 
   protected:
@@ -1136,27 +1181,32 @@ struct CBDT
   DEFINE_SIZE_ARRAY (4, dataZ);
 };
 
+struct CBDT : CBDTImpl<false> {};
+struct EBDT : CBDTImpl<true> {};
+
+template <bool is_eblc>
 inline bool
-CBLC::subset (hb_subset_context_t *c) const
+CBLCImpl<is_eblc>::subset (hb_subset_context_t *c) const
 {
   TRACE_SUBSET (this);
 
   // Use a vector as a secondary buffer as the tables need to be built in parallel.
   hb_vector_t<char> cbdt_prime;
 
-  auto *cblc_prime = c->serializer->start_embed<CBLC> ();
+  auto *cblc_prime = c->serializer->start_embed<CBLCImpl> ();
   if (unlikely (!c->serializer->extend_min (cblc_prime))) return_trace (false);
   cblc_prime->version = version;
 
-  hb_blob_t* cbdt_blob = hb_sanitize_context_t ().reference_table<CBDT> (c->plan->source);
+  using DataTable = CBDTImpl<is_eblc>;
+  hb_blob_t* cbdt_blob = hb_sanitize_context_t ().reference_table<DataTable> (c->plan->source);
   unsigned int cbdt_length;
-  CBDT* cbdt = (CBDT *) hb_blob_get_data (cbdt_blob, &cbdt_length);
-  if (unlikely (cbdt_length < CBDT::min_size))
+  DataTable* cbdt = (DataTable *) hb_blob_get_data (cbdt_blob, &cbdt_length);
+  if (unlikely (cbdt_length < DataTable::min_size))
   {
     hb_blob_destroy (cbdt_blob);
     return_trace (false);
   }
-  _copy_data_to_cbdt (&cbdt_prime, cbdt, CBDT::min_size);
+  _copy_data_to_cbdt (&cbdt_prime, cbdt, DataTable::min_size);
 
   cbdt_dedup_context_t dedup;
   dedup.budget = (int64_t) cbdt_length * HB_SUBSET_CBDT_MAX_COPY_FACTOR;
@@ -1165,7 +1215,7 @@ CBLC::subset (hb_subset_context_t *c) const
 
   hb_blob_destroy (cbdt_blob);
 
-  return_trace (CBLC::sink_cbdt (c, &cbdt_prime));
+  return_trace (sink_cbdt (c, &cbdt_prime));
 }
 
 struct CBDT_accelerator_t : CBDT::accelerator_t {

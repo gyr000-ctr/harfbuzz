@@ -15,6 +15,8 @@ bool _hb_subset_table_color		(hb_subset_plan_t *plan, hb_vector_t<char> &buf, hb
   case HB_TAG('C','P','A','L'): *success = _hb_subset_table<const OT::CPAL> (plan, buf); return true;
   case HB_TAG('C','B','L','C'): *success = _hb_subset_table<const OT::CBLC> (plan, buf); return true;
   case HB_TAG('C','B','D','T'): *success = true; return true; /* skip CBDT, handled by CBLC */
+  case HB_TAG('E','B','L','C'): *success = _hb_subset_table<const OT::EBLC> (plan, buf); return true;
+  case HB_TAG('E','B','D','T'): *success = true; return true; /* skip EBDT, handled by EBLC */
   }
 #endif
   return false;

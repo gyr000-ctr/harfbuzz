@@ -844,8 +844,6 @@ test_subset_unsubsettable_glyph_tables (void)
    * rewrite the synthetic data, and the tag should be removed from
    * hb-subset-plan.cc's unsubsettable_glyph_tables[]. */
   static const hb_tag_t tags[] = {
-    HB_TAG ('E', 'B', 'D', 'T'),
-    HB_TAG ('E', 'B', 'L', 'C'),
     HB_TAG ('J', 'S', 'T', 'F'),
     HB_TAG ('L', 'T', 'S', 'H'),
     HB_TAG ('S', 'V', 'G', ' '),
